@@ -1,0 +1,6 @@
+*.log
+*.ini
+scratch/
+test_*.ps1
+run_debug.ps1
+.vscode/
