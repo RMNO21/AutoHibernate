@@ -43,6 +43,5 @@ Set-ItemProperty -Path $regPath -Name "AutoHibernate" -Value $regValue -Force
 # Start background service
 Start-Process -FilePath "wscript.exe" -ArgumentList "`"$installDir\AutoHibernate_Silent.vbs`""
 
-Write-Host "Auto Hibernate has been successfully installed and started in background!" -ForegroundColor Cyan
-Write-Host "Search for 'Auto Hibernate' in your Windows Start Menu anytime." -ForegroundColor Green
-Write-Host "Hotkeys: Start: Ctrl+Shift+H | Stop: Ctrl+Shift+X | Status: Ctrl+Shift+S" -ForegroundColor Green
+Write-Host "Auto Hibernate has been successfully installed and started in the background!" -ForegroundColor Cyan
+Write-Host "Search for 'Auto Hibernate' in your Windows Start Menu anytime to view status and controls." -ForegroundColor Green

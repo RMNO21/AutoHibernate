@@ -37,7 +37,6 @@ $script:statusEvent = New-Object System.Threading.EventWaitHandle($false, [Syste
 $codeDefinition = @"
 using System;
 using System.Runtime.InteropServices;
-using System.Windows.Forms;
 
 public class WinInput {
     [StructLayout(LayoutKind.Sequential)]
@@ -55,78 +54,12 @@ public class WinInput {
     }
 }
 
-public class HotKeyReceiver : NativeWindow {
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+public class WinGuiHelper {
     [DllImport("user32.dll")]
     public static extern bool SetForegroundWindow(IntPtr hWnd);
-
-    public const uint MOD_ALT = 0x0001;
-    public const uint MOD_CONTROL = 0x0002;
-    public const uint MOD_SHIFT = 0x0004;
-    public const uint MOD_WIN = 0x0008;
-
-    public const int WM_HOTKEY = 0x0312;
-
-    public event Action OnStart;
-    public event Action OnStop;
-    public event Action OnStatus;
-
-    public HotKeyReceiver() {
-        CreateParams cp = new CreateParams();
-        cp.Caption = "AutoHibernate_HotKey_Receiver";
-        this.CreateHandle(cp);
-
-        // START:
-        // ID 1: Ctrl + Shift + H (0x48)
-        RegisterHotKey(this.Handle, 1, MOD_CONTROL | MOD_SHIFT, 0x48);
-        // ID 2: Win + Shift + H (0x48)
-        RegisterHotKey(this.Handle, 2, MOD_WIN | MOD_SHIFT, 0x48);
-        // ID 3: Ctrl + Alt + H (0x48)
-        RegisterHotKey(this.Handle, 3, MOD_CONTROL | MOD_ALT, 0x48);
-
-        // STOP:
-        // ID 10: Ctrl + Shift + X (0x58)
-        RegisterHotKey(this.Handle, 10, MOD_CONTROL | MOD_SHIFT, 0x58);
-        // ID 11: Ctrl + Shift + End (0x23)
-        RegisterHotKey(this.Handle, 11, MOD_CONTROL | MOD_SHIFT, 0x23);
-        // ID 12: Win + Shift + X (0x58)
-        RegisterHotKey(this.Handle, 12, MOD_WIN | MOD_SHIFT, 0x58);
-        // ID 13: Ctrl + Alt + X (0x58)
-        RegisterHotKey(this.Handle, 13, MOD_CONTROL | MOD_ALT, 0x58);
-
-        // STATUS:
-        // ID 20: Ctrl + Shift + S (0x53)
-        RegisterHotKey(this.Handle, 20, MOD_CONTROL | MOD_SHIFT, 0x53);
-        // ID 21: Ctrl + Alt + S (0x53)
-        RegisterHotKey(this.Handle, 21, MOD_CONTROL | MOD_ALT, 0x53);
-    }
-
-    protected override void WndProc(ref Message m) {
-        if (m.Msg == WM_HOTKEY) {
-            int id = m.WParam.ToInt32();
-            if (id >= 1 && id <= 9) {
-                if (OnStart != null) { try { OnStart(); } catch {} }
-            } else if (id >= 10 && id <= 19) {
-                if (OnStop != null) { try { OnStop(); } catch {} }
-            } else if (id >= 20 && id <= 29) {
-                if (OnStatus != null) { try { OnStatus(); } catch {} }
-            }
-        }
-        base.WndProc(ref m);
-    }
-
-    public void Cleanup() {
-        for (int i = 1; i <= 30; i++) {
-            UnregisterHotKey(this.Handle, i);
-        }
-        this.DestroyHandle();
-    }
 }
 "@
-Add-Type -TypeDefinition $codeDefinition -ReferencedAssemblies "System.Windows.Forms.dll", "System.Drawing.dll" -ErrorAction SilentlyContinue
+Add-Type -TypeDefinition $codeDefinition -ErrorAction SilentlyContinue
 
 $appDir = "$env:LOCALAPPDATA\AutoHibernate"
 if (-not (Test-Path $appDir)) { New-Item -ItemType Directory -Path $appDir -Force | Out-Null }
@@ -155,8 +88,8 @@ $script:isTimerActive = [bool]$Active
 $script:isHibernatingSelf = $false
 $script:lastTickTime = [DateTime]::UtcNow
 
-# Hotkey Receiver
-$script:hotkeyReceiver = New-Object HotKeyReceiver
+$bulletOn = [char]0x25CF
+$bulletOff = [char]0x25CB
 
 # Modern OSD Banner Function
 function Show-OSD([string]$title, [string]$subtitle = "", [string]$colorHex = "#00E5FF") {
@@ -222,7 +155,7 @@ function Show-OSD([string]$title, [string]$subtitle = "", [string]$colorHex = "#
 # --- STATUS WINDOW (GUI Card) ---
 $script:statusForm = New-Object System.Windows.Forms.Form
 $script:statusForm.Text = "Auto Hibernate - Sleep Timer"
-$script:statusForm.Size = New-Object System.Drawing.Size(430, 340)
+$script:statusForm.Size = New-Object System.Drawing.Size(430, 275)
 $script:statusForm.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
 $script:statusForm.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
 $script:statusForm.MaximizeBox = $false
@@ -257,7 +190,6 @@ $lblCountdown = New-Object System.Windows.Forms.Label
 $lblCountdown.Location = New-Object System.Drawing.Point(18, 40)
 $lblCountdown.AutoSize = $true
 $lblCountdown.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 32, [System.Drawing.FontStyle]::Bold)
-$lblCountdown.ForeColor = [System.Drawing.Color]::White
 $cardPanel.Controls.Add($lblCountdown)
 
 $lblTimeout = New-Object System.Windows.Forms.Label
@@ -294,9 +226,9 @@ $cboTimeout.Add_SelectedIndexChanged({
 
 $lblStatusDesc = New-Object System.Windows.Forms.Label
 $lblStatusDesc.Location = New-Object System.Drawing.Point(20, 108)
-$lblStatusDesc.Size = New-Object System.Drawing.Size(370, 38)
+$lblStatusDesc.Size = New-Object System.Drawing.Size(370, 36)
 $lblStatusDesc.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-$lblStatusDesc.ForeColor = [System.Drawing.Color]::FromArgb(180, 192, 210)
+$lblStatusDesc.ForeColor = [System.Drawing.Color]::FromArgb(180, 190, 210)
 $cardPanel.Controls.Add($lblStatusDesc)
 
 # Controls Row
@@ -338,13 +270,12 @@ $btnHide.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9)
 $btnHide.Add_Click({ $script:statusForm.Hide() })
 $cardPanel.Controls.Add($btnHide)
 
-# Footer shortcuts info
 $lblFooter = New-Object System.Windows.Forms.Label
-$lblFooter.Location = New-Object System.Drawing.Point(20, 218)
-$lblFooter.Size = New-Object System.Drawing.Size(370, 40)
+$lblFooter.Location = New-Object System.Drawing.Point(20, 212)
+$lblFooter.Size = New-Object System.Drawing.Size(370, 20)
 $lblFooter.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
-$lblFooter.ForeColor = [System.Drawing.Color]::FromArgb(130, 142, 160)
-$lblFooter.Text = "Hotkeys: Start: Ctrl+Shift+H   |   Stop: Ctrl+Shift+X`nStatus: Ctrl+Shift+S (or click Tray icon / Desktop shortcut)"
+$lblFooter.ForeColor = [System.Drawing.Color]::FromArgb(120, 132, 150)
+$lblFooter.Text = "Resets automatically on physical mouse or keyboard activity."
 $cardPanel.Controls.Add($lblFooter)
 
 function Update-StatusWindowUI {
@@ -355,19 +286,21 @@ function Update-StatusWindowUI {
         $m = [Math]::Floor($remainSec / 60)
         $s = [Math]::Floor($remainSec % 60)
 
-        $lblStatusBadge.Text = "● ACTIVE - SLEEP TIMER RUNNING"
+        $lblStatusBadge.Text = "$bulletOn ACTIVE - SLEEP TIMER RUNNING"
         $lblStatusBadge.ForeColor = [System.Drawing.Color]::FromArgb(0, 235, 255)
         $lblCountdown.Text = ("{0:D2}:{1:D2}" -f [int]$m, [int]$s)
-        $lblStatusDesc.Text = "Remaining until Hibernate. Resets to $($script:timeoutMinutes):00 on mouse or keyboard movement.`nPress Ctrl+Shift+X to turn off."
+        $lblCountdown.ForeColor = [System.Drawing.Color]::White
+        $lblStatusDesc.Text = "Remaining until Hibernate. Resets to $($script:timeoutMinutes):00 on mouse or keyboard movement."
         
         $btnStartStop.Text = "Turn Off"
         $btnStartStop.BackColor = [System.Drawing.Color]::FromArgb(120, 30, 45)
         $btnStartStop.ForeColor = [System.Drawing.Color]::White
     } else {
-        $lblStatusBadge.Text = "○ DISABLED (STANDBY)"
+        $lblStatusBadge.Text = "$bulletOff DISABLED (STANDBY)"
         $lblStatusBadge.ForeColor = [System.Drawing.Color]::FromArgb(160, 170, 185)
         $lblCountdown.Text = "--:--"
-        $lblStatusDesc.Text = "Auto Hibernate is currently OFF.`nPress Ctrl+Shift+H or click 'Start Timer' to activate."
+        $lblCountdown.ForeColor = [System.Drawing.Color]::FromArgb(160, 170, 185)
+        $lblStatusDesc.Text = "Sleep timer is currently OFF.`nClick 'Start Timer' below to activate."
 
         $btnStartStop.Text = "Start Timer"
         $btnStartStop.BackColor = [System.Drawing.Color]::FromArgb(20, 120, 80)
@@ -383,7 +316,7 @@ function Show-StatusWindow {
     $script:statusForm.Show()
     $script:statusForm.BringToFront()
     $script:statusForm.Activate()
-    [HotKeyReceiver]::SetForegroundWindow($script:statusForm.Handle) | Out-Null
+    [WinGuiHelper]::SetForegroundWindow($script:statusForm.Handle) | Out-Null
 }
 
 # --- TRAY ICON SETUP ---
@@ -404,7 +337,7 @@ function Update-TrayState {
         } else {
             $tray.Icon = [System.Drawing.SystemIcons]::Application
         }
-        $tray.Text = "Auto Hibernate: Disabled (Press Ctrl+Shift+H)"
+        $tray.Text = "Auto Hibernate: Inactive (Standby)"
     }
     if ($script:statusForm.Visible) {
         Update-StatusWindowUI
@@ -492,7 +425,7 @@ function Set-TimerActive([bool]$state, [bool]$fromUser = $true) {
     Update-TrayState
     if ($fromUser) {
         if ($state) {
-            Show-OSD "Auto Hibernate: Started ($($script:timeoutMinutes)m)" "Resets on mouse/keyboard. Press Ctrl+Shift+X to turn off." "#00E5FF"
+            Show-OSD "Auto Hibernate: Started ($($script:timeoutMinutes)m)" "Hibernate after $($script:timeoutMinutes)m inactivity. Resets on mouse/keyboard." "#00E5FF"
         } else {
             Show-OSD "Auto Hibernate: Stopped" "Timer has been turned off." "#FF5252"
         }
@@ -503,7 +436,6 @@ function Trigger-Hibernate {
     $script:isHibernatingSelf = $true
     $tray.Visible = $false
     $tray.Dispose()
-    if ($script:hotkeyReceiver) { $script:hotkeyReceiver.Cleanup() }
     if ($script:statusForm) { $script:statusForm.Dispose() }
     [System.Windows.Forms.Application]::Exit()
     cmd.exe /c "shutdown /h /f"
@@ -514,7 +446,6 @@ function Exit-Program {
     if ($script:timer) { $script:timer.Stop() }
     $tray.Visible = $false
     $tray.Dispose()
-    if ($script:hotkeyReceiver) { $script:hotkeyReceiver.Cleanup() }
     if ($script:statusForm) { $script:statusForm.Dispose() }
     if ($script:startEvent) { $script:startEvent.Close() }
     if ($script:stopEvent) { $script:stopEvent.Close() }
@@ -523,22 +454,6 @@ function Exit-Program {
     [System.Windows.Forms.Application]::Exit()
     [Environment]::Exit(0)
 }
-
-# Connect Hotkeys:
-# Start: Ctrl+Shift+H / Win+Shift+H / Ctrl+Alt+H
-$script:hotkeyReceiver.add_OnStart({
-    Set-TimerActive $true -fromUser $true
-})
-
-# Status: Ctrl+Shift+S / Ctrl+Alt+S
-$script:hotkeyReceiver.add_OnStatus({
-    Show-StatusWindow
-})
-
-# Stop: Ctrl+Shift+X / Ctrl+Shift+End / Win+Shift+X / Ctrl+Alt+X
-$script:hotkeyReceiver.add_OnStop({
-    Set-TimerActive $false -fromUser $true
-})
 
 # Power Event Handler:
 # If user puts PC to sleep or hibernates manually, or system resumes:
@@ -574,13 +489,13 @@ $menu.add_Opening({
         $s = [Math]::Floor($remainSec % 60)
         $lblStatus.Text = ("Status: Active - {0:D2}:{1:D2} Left ({2}m)" -f [int]$m, [int]$s, $script:timeoutMinutes)
     } else {
-        $lblStatus.Text = "Status: Disabled (Press Ctrl+Shift+H)"
+        $lblStatus.Text = "Status: Inactive (Standby)"
     }
 })
 
 Update-TrayState
 if ($Active) {
-    Show-OSD "Auto Hibernate: Started ($($script:timeoutMinutes)m)" "Resets on mouse/keyboard. Press Ctrl+Shift+X to cancel." "#00E5FF"
+    Show-OSD "Auto Hibernate: Started ($($script:timeoutMinutes)m)" "Hibernate after $($script:timeoutMinutes)m inactivity. Resets on mouse/keyboard." "#00E5FF"
 }
 
 if ($ShowStatus) {
