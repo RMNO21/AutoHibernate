@@ -1,9 +1,8 @@
-# Contributing Guidelines
+# Contributing to AutoHibernate
 
-Thank you for contributing to AutoHibernate!
+Thank you for contributing to smart power management!
 
-## Development Workflow
-1. Fork and clone the repository.
-2. Create a feature or fix branch from \$defaultBranch\.
-3. Adhere to established project standards and test your modifications locally.
-4. Submit a clear and well-documented pull request.
+## Focus Areas
+- Accurate idle detection without interfering with background rendering tasks.
+- Battery health optimization algorithms.
+- Lightweight standalone executables.
